@@ -68,41 +68,46 @@ function ScoreBar({ label, score }: { label: string; score: number }) {
   )
 }
 
-const KEYWORD_CHIP_GROUPS = [
+const KEYWORD_TAG_GROUPS = [
   {
-    category: '場所×冷え',
-    chips: ['映画館 冷え 対策', 'オフィス 足元 冷え', '新幹線 冷え 対策', 'カフェ 冷房 寒い', '飛行機 足元 冷え', 'スーパー 冷え 夏'],
+    category: '場所',
+    tags: ['オフィス', '映画館', '新幹線', 'カフェ', '自宅', 'スーパー', '飛行機', '電車', '病院', '美容院'],
   },
   {
-    category: '年代×悩み',
-    chips: ['40代 冷え ひどい', '更年期 冷え 対策', '30代 冷え性 改善', '産後 冷え むくみ', '生理痛 温活 効果'],
+    category: '症状・悩み',
+    tags: ['冷え', 'むくみ', '冷え性', '低体温', '末端冷え', '内臓冷え', '不眠', '肩こり', '疲れ', '肌荒れ', '便秘', '頭痛', '血行不良', '体重増加', '免疫低下'],
   },
   {
-    category: '季節×温活',
-    chips: ['夏 冷房 冷え 対策', '梅雨 足元 冷え', '秋 温活 始め方', '冬 足元 冷え 寝れない'],
+    category: 'ケア・グッズ',
+    tags: ['温活', 'レッグウォーマー', 'シルク', '腹巻き', 'カイロ', '足湯', '冷えとり', '靴下', 'セルフケア', 'グッズ', 'お風呂', '生姜', 'ホットドリンク', 'ストレッチ', 'マッサージ'],
   },
   {
-    category: '商品関連',
-    chips: ['シルク レッグウォーマー 効果', '温活 グッズ 持ち歩き', 'レッグウォーマー 使い方', '温活 セルフケア 簡単'],
-  },
-]
-
-const NOTE_KEYWORD_EXTRA = [
-  {
-    category: 'note向け',
-    chips: ['温活とは 効果 体験談', '冷え性 原因 改善方法', 'セルフケア 習慣 40代', 'レッグウォーマー 選び方'],
+    category: '季節・状況',
+    tags: ['夏', '冬', '梅雨', '秋', '冷房', '寒暖差', '夜', '朝', '寝るとき', '仕事中'],
   },
 ]
 
-const TARGET_CHIPS = [
-  '40代 冷え性の女性',
-  '更年期が気になる女性',
-  'デスクワークで足元が冷える女性',
-  '産後の冷えに悩むママ',
-  '生理痛がつらい女性',
-  '温活を始めたい30〜40代',
-  '冬の冷え対策を探している女性',
-  '夏の冷房対策をしたい女性',
+const TARGET_TAG_GROUPS = [
+  {
+    category: '年代',
+    tags: ['20代', '30代', '40代', '50代', '60代', '働く世代', 'ミドル世代', 'アラフォー'],
+  },
+  {
+    category: '職業・状況',
+    tags: ['会社員', '主婦', 'パート', '在宅ワーク', 'フリーランス', '育児中', '産後', '妊活中', '共働き', '夜勤'],
+  },
+  {
+    category: '健康状態',
+    tags: ['冷え性', '更年期', '生理痛', 'PMS', '生理不順', '低体温', '疲れやすい', 'むくみ持ち', '眠れない', '肌荒れ', '体質改善', '妊活'],
+  },
+  {
+    category: '意識・性格',
+    tags: ['ズボラ', '忙しい', '初心者', 'おしゃれ好き', '健康意識高め', '自然素材好き', 'コスパ重視', 'シンプル好き', 'グッズ好き', '無理したくない'],
+  },
+  {
+    category: 'ライフスタイル',
+    tags: ['一人暮らし', '子育て', '旅行好き', 'アウトドア', 'インドア', 'デスクワーク', '立ち仕事', '外回り', '在宅', 'アクティブ'],
+  },
 ]
 
 const STYLES = ['体験談・等身大', '解説・情報系', '比較・まとめ系'] as const
@@ -134,6 +139,12 @@ function WritePageContent() {
   const [seoResult, setSeoResult] = useState<SeoResult | null>(null)
   const [copied, setCopied] = useState<string | null>(null)
   const [style, setStyle] = useState<ArticleStyle>('体験談・等身大')
+
+  // キーワード・ターゲットタグ選択
+  const [selectedKeywordTags, setSelectedKeywordTags] = useState<Set<string>>(new Set())
+  const [openKeywordCat, setOpenKeywordCat] = useState('場所')
+  const [selectedTargetTags, setSelectedTargetTags] = useState<Set<string>>(new Set())
+  const [openTargetCat, setOpenTargetCat] = useState('年代')
 
   // 画像プロンプト
   const [thumbnailPrompt, setThumbnailPrompt] = useState('')
@@ -314,6 +325,22 @@ function WritePageContent() {
     }
   }
 
+  function toggleKeywordTag(tag: string) {
+    const next = new Set(selectedKeywordTags)
+    if (next.has(tag)) next.delete(tag)
+    else next.add(tag)
+    setSelectedKeywordTags(next)
+    setKeyword([...next].join(' '))
+  }
+
+  function toggleTargetTag(tag: string) {
+    const next = new Set(selectedTargetTags)
+    if (next.has(tag)) next.delete(tag)
+    else next.add(tag)
+    setSelectedTargetTags(next)
+    setTarget([...next].join(' '))
+  }
+
   function reset() {
     setStep(1)
     setTitlesResult(null)
@@ -326,6 +353,10 @@ function WritePageContent() {
     setSectionChecked([])
     setSectionPrompts([])
     setSectionImageUrls([])
+    setSelectedKeywordTags(new Set())
+    setSelectedTargetTags(new Set())
+    setOpenKeywordCat('場所')
+    setOpenTargetCat('年代')
   }
 
   return (
@@ -397,72 +428,138 @@ function WritePageContent() {
 
             {/* メインキーワード */}
             <div>
-              <label className="block text-sm font-medium text-stone-600 mb-1.5">
-                メインキーワード <span className="text-rose-500">*</span>
-              </label>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="text-sm font-medium text-stone-600">
+                  メインキーワード <span className="text-rose-500">*</span>
+                </label>
+                {selectedKeywordTags.size > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => { setSelectedKeywordTags(new Set()); setKeyword('') }}
+                    className="text-xs text-stone-400 hover:text-rose-600 transition-colors"
+                  >
+                    選択をリセット
+                  </button>
+                )}
+              </div>
               <input
                 type="text"
                 value={keyword}
                 onChange={(e) => setKeyword(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && generateTitles()}
-                placeholder="例：冷え性 レッグウォーマー 効果"
+                placeholder="タグを選択、または直接入力（例：冷え オフィス 温活）"
                 className="w-full px-4 py-2.5 border border-stone-200 rounded-lg text-stone-800 text-sm focus:outline-none focus:ring-2 focus:ring-rose-200"
               />
-              <div className="mt-3 space-y-3">
-                {[
-                  ...KEYWORD_CHIP_GROUPS,
-                  ...(platform === 'note' ? NOTE_KEYWORD_EXTRA : []),
-                ].map(({ category, chips }) => (
-                  <div key={category}>
-                    <p className="text-xs text-stone-400 mb-1.5">{category}</p>
-                    <div className="flex flex-wrap gap-1.5">
-                      {chips.map((chip) => (
-                        <button
-                          key={chip}
-                          type="button"
-                          onClick={() => setKeyword(chip)}
-                          className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${
-                            keyword === chip
-                              ? 'bg-rose-600 border-rose-600 text-white'
-                              : 'bg-white border-stone-200 text-stone-600 hover:border-rose-300 hover:text-rose-700'
-                          }`}
-                        >
-                          {chip}
-                        </button>
-                      ))}
+              <div className="mt-2 border border-stone-200 rounded-lg overflow-hidden divide-y divide-stone-200">
+                {KEYWORD_TAG_GROUPS.map(({ category, tags }) => {
+                  const selectedCount = tags.filter(t => selectedKeywordTags.has(t)).length
+                  const isOpen = openKeywordCat === category
+                  return (
+                    <div key={category}>
+                      <button
+                        type="button"
+                        onClick={() => setOpenKeywordCat(isOpen ? '' : category)}
+                        className="w-full flex items-center justify-between px-4 py-2.5 bg-stone-50 hover:bg-stone-100 transition-colors text-left"
+                      >
+                        <span className="flex items-center gap-2">
+                          <span className="text-sm font-medium text-stone-700">{category}</span>
+                          {selectedCount > 0 && (
+                            <span className="text-xs bg-rose-100 text-rose-600 px-1.5 py-0.5 rounded-full">
+                              {selectedCount}
+                            </span>
+                          )}
+                        </span>
+                        <span className="text-stone-400 text-xs">{isOpen ? '▲' : '▼'}</span>
+                      </button>
+                      {isOpen && (
+                        <div className="px-3 py-3 flex flex-wrap gap-1.5 bg-white">
+                          {tags.map((tag) => (
+                            <button
+                              key={tag}
+                              type="button"
+                              onClick={() => toggleKeywordTag(tag)}
+                              className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${
+                                selectedKeywordTags.has(tag)
+                                  ? 'bg-rose-600 border-rose-600 text-white'
+                                  : 'bg-white border-stone-200 text-stone-600 hover:border-rose-300 hover:text-rose-700'
+                              }`}
+                            >
+                              {tag}
+                            </button>
+                          ))}
+                        </div>
+                      )}
                     </div>
-                  </div>
-                ))}
+                  )
+                })}
               </div>
             </div>
 
             {/* ターゲット読者 */}
             <div>
-              <label className="block text-sm font-medium text-stone-600 mb-1.5">
-                ターゲット読者（任意）
-              </label>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="text-sm font-medium text-stone-600">
+                  ターゲット読者（任意）
+                </label>
+                {selectedTargetTags.size > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => { setSelectedTargetTags(new Set()); setTarget('') }}
+                    className="text-xs text-stone-400 hover:text-rose-600 transition-colors"
+                  >
+                    選択をリセット
+                  </button>
+                )}
+              </div>
               <input
                 type="text"
                 value={target}
                 onChange={(e) => setTarget(e.target.value)}
-                placeholder="例：40代、冷え性で悩む会社員女性"
+                placeholder="タグを選択、または直接入力（例：40代 冷え性 デスクワーク）"
                 className="w-full px-4 py-2.5 border border-stone-200 rounded-lg text-stone-800 text-sm focus:outline-none focus:ring-2 focus:ring-rose-200"
               />
-              <div className="mt-2 flex flex-wrap gap-1.5">
-                {TARGET_CHIPS.map((chip) => (
-                  <button
-                    key={chip}
-                    type="button"
-                    onClick={() => setTarget(chip)}
-                    className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${
-                      target === chip
-                        ? 'bg-rose-600 border-rose-600 text-white'
-                        : 'bg-white border-stone-200 text-stone-600 hover:border-rose-300 hover:text-rose-700'
-                    }`}
-                  >
-                    {chip}
-                  </button>
-                ))}
+              <div className="mt-2 border border-stone-200 rounded-lg overflow-hidden divide-y divide-stone-200">
+                {TARGET_TAG_GROUPS.map(({ category, tags }) => {
+                  const selectedCount = tags.filter(t => selectedTargetTags.has(t)).length
+                  const isOpen = openTargetCat === category
+                  return (
+                    <div key={category}>
+                      <button
+                        type="button"
+                        onClick={() => setOpenTargetCat(isOpen ? '' : category)}
+                        className="w-full flex items-center justify-between px-4 py-2.5 bg-stone-50 hover:bg-stone-100 transition-colors text-left"
+                      >
+                        <span className="flex items-center gap-2">
+                          <span className="text-sm font-medium text-stone-700">{category}</span>
+                          {selectedCount > 0 && (
+                            <span className="text-xs bg-rose-100 text-rose-600 px-1.5 py-0.5 rounded-full">
+                              {selectedCount}
+                            </span>
+                          )}
+                        </span>
+                        <span className="text-stone-400 text-xs">{isOpen ? '▲' : '▼'}</span>
+                      </button>
+                      {isOpen && (
+                        <div className="px-3 py-3 flex flex-wrap gap-1.5 bg-white">
+                          {tags.map((tag) => (
+                            <button
+                              key={tag}
+                              type="button"
+                              onClick={() => toggleTargetTag(tag)}
+                              className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${
+                                selectedTargetTags.has(tag)
+                                  ? 'bg-rose-600 border-rose-600 text-white'
+                                  : 'bg-white border-stone-200 text-stone-600 hover:border-rose-300 hover:text-rose-700'
+                              }`}
+                            >
+                              {tag}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
               </div>
             </div>
 
