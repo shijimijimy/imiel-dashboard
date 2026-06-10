@@ -140,6 +140,9 @@ function WritePageContent() {
   const [copied, setCopied] = useState<string | null>(null)
   const [style, setStyle] = useState<ArticleStyle>('体験談・等身大')
 
+  // 体験談メモ
+  const [memos, setMemos] = useState<string[]>([''])
+
   // キーワード・ターゲットタグ選択
   const [selectedKeywordTags, setSelectedKeywordTags] = useState<Set<string>>(new Set())
   const [openKeywordCat, setOpenKeywordCat] = useState('場所')
@@ -206,6 +209,7 @@ function WritePageContent() {
         brandTone,
         mustKeywords: settings.mustKeywords,
         style,
+        userMemos: memosText || undefined,
       })
       const parsed = parseJSON<TitlesResult>(result)
       if (!parsed) throw new Error('レスポンスの解析に失敗しました')
@@ -230,6 +234,7 @@ function WritePageContent() {
         outline: titlesResult.outline,
         selectedTitle,
         brandTone,
+        userMemos: memosText || undefined,
       })
       setBody(result)
       setStep(3)
@@ -357,6 +362,23 @@ function WritePageContent() {
     setSelectedTargetTags(new Set())
     setOpenKeywordCat('場所')
     setOpenTargetCat('年代')
+    setMemos([''])
+  }
+
+  const memosText = memos.filter(m => m.trim()).join('\n')
+
+  function addMemo() {
+    if (memos.length < 5) setMemos([...memos, ''])
+  }
+
+  function removeMemo(i: number) {
+    setMemos(memos.filter((_, idx) => idx !== i))
+  }
+
+  function updateMemo(i: number, value: string) {
+    const next = [...memos]
+    next[i] = value
+    setMemos(next)
   }
 
   return (
@@ -561,6 +583,53 @@ function WritePageContent() {
                   )
                 })}
               </div>
+            </div>
+
+            {/* 体験談・伝えたいこと */}
+            <div>
+              <label className="block text-sm font-medium text-stone-600 mb-1.5">
+                体験談・伝えたいこと（任意）
+              </label>
+              <p className="text-xs text-stone-400 mb-3 leading-relaxed">
+                記事に入れたいエピソード、伝えたい気持ち、実際にあった出来事などを自由に書いてください。
+                AIがこの内容を記事に自然に組み込みます。
+              </p>
+              <div className="space-y-2">
+                {memos.map((memo, i) => (
+                  <div key={i} className="flex gap-2 items-start">
+                    <textarea
+                      value={memo}
+                      onChange={(e) => updateMemo(i, e.target.value)}
+                      rows={5}
+                      placeholder={
+                        i === 0
+                          ? `例：\n・映画館で足が冷えすぎて集中できなかった体験\n・レッグウォーマーを使ったら最後まで楽しめた\n・最初は見た目が気になったけど慣れたら手放せない\n・バッグに入れておくと安心感がある`
+                          : '体験談やエピソードを入力…'
+                      }
+                      className="flex-1 px-4 py-3 border border-stone-200 rounded-lg text-sm text-stone-700 focus:outline-none focus:ring-2 focus:ring-rose-200 resize-y"
+                    />
+                    {memos.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => removeMemo(i)}
+                        className="mt-1 w-8 h-8 flex items-center justify-center text-stone-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors shrink-0"
+                      >
+                        ✕
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+              {memos.length < 5 && (
+                <button
+                  type="button"
+                  onClick={addMemo}
+                  className="mt-2 flex items-center gap-1 text-xs text-stone-500 hover:text-rose-600 transition-colors"
+                >
+                  <span>＋ メモを追加</span>
+                  <span className="text-stone-300">（最大{5 - memos.length}件追加できます）</span>
+                </button>
+              )}
             </div>
 
             {/* 記事スタイル */}

@@ -28,6 +28,7 @@ export function buildTitlesPrompt({
   brandTone,
   mustKeywords,
   style,
+  userMemos,
 }: {
   platform: 'shopify' | 'note'
   keyword: string
@@ -35,6 +36,7 @@ export function buildTitlesPrompt({
   brandTone: string
   mustKeywords: string
   style?: string
+  userMemos?: string
 }): string {
   const platformInstructions =
     platform === 'note'
@@ -59,7 +61,7 @@ ${styleInstruction}
 ${platformInstructions}
 メインキーワード：${keyword}
 ターゲット：${target || '40代女性、冷えや美容に悩む方'}
-
+${userMemos ? `\n【必ず記事に含める体験談・エピソード】\n${userMemos}\n※上記の体験談を記事の構成に自然に組み込んでください。` : ''}
 以下をJSON形式で出力してください（コードブロックなしで純粋なJSONのみ）：
 {
   "titles": [
@@ -85,12 +87,14 @@ export function buildBodyPrompt({
   outline,
   selectedTitle,
   brandTone,
+  userMemos,
 }: {
   platform: 'shopify' | 'note'
   keyword: string
   outline: { h2: string; summary: string }[]
   selectedTitle: string
   brandTone: string
+  userMemos?: string
 }): string {
   const outlineText = outline
     .map((o, i) => `${i + 1}. ${o.h2}：${o.summary}`)
@@ -110,7 +114,7 @@ ${YUMI_STYLE_RULES}
 構成：
 ${outlineText}
 
-以下の条件でブログ記事の本文を書いてください：
+${userMemos ? `【執筆者の実体験・伝えたいこと】\n${userMemos}\n※上記のエピソードや気持ちを記事本文に自然に織り交ぜてください。カッコ書きの本音補足として入れても良いです。\n\n` : ''}以下の条件でブログ記事の本文を書いてください：
 - タイトル：${selectedTitle}
 - 1200〜1500文字
 - H2見出しを使う（## 記法で）
