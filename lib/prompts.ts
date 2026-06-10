@@ -153,6 +153,63 @@ export function buildSeoPrompt({
 }`
 }
 
+export function buildThumbnailImagePrompt({
+  title,
+  keyword,
+  body,
+}: {
+  title: string
+  keyword: string
+  body: string
+}): string {
+  return `以下の記事のサムネイル画像をDALL-Eで生成するための詳細なプロンプトを日本語で作成してください。
+
+記事タイトル：${title}
+キーワード：${keyword}
+記事の内容：${body.substring(0, 200)}
+
+条件：
+- 被写体：30〜40代の自然体の日本人女性（モデルっぽくなく等身大）
+- 表情：穏やかでリラックスした自然な表情
+- 場所：温かみのある和モダンな室内（窓際、カフェ、自宅など）
+- 光：柔らかい自然光
+- 雰囲気：シルク・温活・セルフケアを感じさせる
+- トーン：上品で落ち着いた、押し付けがましくない
+- サイズ：横長16:9
+- 文字：画像内に文字を入れない
+- NGワード：派手、鮮やか、モデル体型、加工感が強い
+
+出力はDALL-Eにそのまま貼れる日本語プロンプトのみ。余計な説明は不要。`
+}
+
+export function buildSectionImagePrompt({
+  h2,
+  sectionSummary,
+  brandTone,
+}: {
+  h2: string
+  sectionSummary: string
+  brandTone: string
+}): string {
+  return `以下の見出しセクションに合う記事挿入画像をDALL-Eで生成するためのプロンプトを日本語で作成してください。
+
+見出し：${h2}
+セクションの内容：${sectionSummary}
+記事全体のトーン：${brandTone}
+
+条件：
+- 被写体：30〜40代の自然体の日本人女性（モデルっぽくなく等身大）
+- 表情：穏やかでリラックスした自然な表情
+- 場所：温かみのある和モダンな室内
+- 光：柔らかい自然光
+- 雰囲気：シルク・温活・セルフケアを感じさせる。サムネイルと統一感のあるトーン
+- サイズ：正方形（1:1）
+- 文字：画像内に文字を入れない
+- NGワード：派手、鮮やか、モデル体型、加工感が強い
+
+出力はDALL-Eにそのまま貼れる日本語プロンプトのみ。余計な説明は不要。`
+}
+
 export function buildImagePrompt(title: string, keyword: string): string {
   return `記事「${title}」（キーワード：${keyword}）のサムネイル画像プロンプトを英語で生成してください。
 

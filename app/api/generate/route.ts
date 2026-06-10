@@ -6,6 +6,8 @@ import {
   buildBodyPrompt,
   buildSeoPrompt,
   buildImagePrompt,
+  buildThumbnailImagePrompt,
+  buildSectionImagePrompt,
 } from '@/lib/prompts'
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
@@ -34,6 +36,12 @@ export async function POST(request: NextRequest) {
         break
       case 'image':
         prompt = buildImagePrompt(params.title, params.keyword)
+        break
+      case 'thumbnail_prompt':
+        prompt = buildThumbnailImagePrompt(params as { title: string; keyword: string; body: string })
+        break
+      case 'section_prompt':
+        prompt = buildSectionImagePrompt(params as { h2: string; sectionSummary: string; brandTone: string })
         break
       default:
         return Response.json({ error: 'Invalid type' }, { status: 400 })

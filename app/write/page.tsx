@@ -134,6 +134,15 @@ function WritePageContent() {
   const [seoResult, setSeoResult] = useState<SeoResult | null>(null)
   const [copied, setCopied] = useState<string | null>(null)
   const [style, setStyle] = useState<ArticleStyle>('体験談・等身大')
+
+  // 画像プロンプト
+  const [thumbnailPrompt, setThumbnailPrompt] = useState('')
+  const [thumbnailCopied, setThumbnailCopied] = useState(false)
+  const [imgLoading, setImgLoading] = useState(false)
+  const [sectionChecked, setSectionChecked] = useState<boolean[]>([])
+  const [sectionPrompts, setSectionPrompts] = useState<string[]>([])
+  const [sectionImageUrls, setSectionImageUrls] = useState<string[]>([])
+  const [sectionLoading, setSectionLoading] = useState(false)
   const [eyecatchUrl, setEyecatchUrl] = useState('')
   const [settings, setSettings] = useState({
     shopifyTone: DEFAULT_BRAND_TONE_SHOPIFY,
@@ -150,6 +159,15 @@ function WritePageContent() {
       localStorage.removeItem('imiel_eyecatch_url')
     }
   }, [])
+
+  useEffect(() => {
+    if (titlesResult) {
+      const len = titlesResult.outline.length
+      setSectionChecked(new Array(len).fill(false))
+      setSectionPrompts(new Array(len).fill(''))
+      setSectionImageUrls(new Array(len).fill(''))
+    }
+  }, [titlesResult])
 
   const brandTone = platform === 'shopify' ? settings.shopifyTone : settings.noteTone
 
@@ -254,6 +272,48 @@ function WritePageContent() {
     setTimeout(() => setCopied(null), 2000)
   }
 
+  async function generateThumbnailPrompt() {
+    if (!body || !selectedTitle) return
+    setImgLoading(true)
+    try {
+      const result = await call({
+        type: 'thumbnail_prompt',
+        title: selectedTitle,
+        keyword,
+        body,
+      })
+      setThumbnailPrompt(result.trim())
+    } catch (e) {
+      setError((e as Error).message)
+    } finally {
+      setImgLoading(false)
+    }
+  }
+
+  async function generateSectionPrompts() {
+    if (!titlesResult) return
+    setSectionLoading(true)
+    try {
+      const newPrompts = [...sectionPrompts]
+      for (let i = 0; i < titlesResult.outline.length; i++) {
+        if (sectionChecked[i] && !newPrompts[i]) {
+          const result = await call({
+            type: 'section_prompt',
+            h2: titlesResult.outline[i].h2,
+            sectionSummary: titlesResult.outline[i].summary,
+            brandTone,
+          })
+          newPrompts[i] = result.trim()
+        }
+      }
+      setSectionPrompts(newPrompts)
+    } catch (e) {
+      setError((e as Error).message)
+    } finally {
+      setSectionLoading(false)
+    }
+  }
+
   function reset() {
     setStep(1)
     setTitlesResult(null)
@@ -261,6 +321,11 @@ function WritePageContent() {
     setBody('')
     setSeoResult(null)
     setError('')
+    setThumbnailPrompt('')
+    setThumbnailCopied(false)
+    setSectionChecked([])
+    setSectionPrompts([])
+    setSectionImageUrls([])
   }
 
   return (
@@ -713,6 +778,155 @@ function WritePageContent() {
                 <p className="text-xs text-stone-400">
                   ✓ 記事データを保存しました。「投稿・通知」ページからShopifyに投稿できます。
                 </p>
+              </div>
+
+              {/* 画像プロンプト */}
+              <div className="bg-white rounded-xl p-6 shadow-sm border border-stone-100">
+                <h2 className="text-base font-semibold text-stone-700 mb-4">画像プロンプト</h2>
+
+                {/* サムネイル */}
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm font-medium text-stone-600">
+                      サムネイル（16:9・DALL-E用）
+                    </p>
+                    {!thumbnailPrompt && (
+                      <button
+                        onClick={generateThumbnailPrompt}
+                        disabled={imgLoading}
+                        className="text-xs px-3 py-1.5 bg-rose-600 text-white rounded-lg hover:bg-rose-700 disabled:opacity-50 transition-colors"
+                      >
+                        {imgLoading ? '生成中...' : 'プロンプトを生成'}
+                      </button>
+                    )}
+                  </div>
+
+                  {thumbnailPrompt ? (
+                    <div className="space-y-2">
+                      <p className="text-xs text-stone-700 bg-stone-50 rounded-lg p-4 whitespace-pre-wrap leading-relaxed border border-stone-200">
+                        {thumbnailPrompt}
+                      </p>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => {
+                            navigator.clipboard.writeText(thumbnailPrompt)
+                            setThumbnailCopied(true)
+                            setTimeout(() => setThumbnailCopied(false), 2000)
+                          }}
+                          className="flex-1 py-2 bg-stone-100 text-stone-700 text-sm rounded-lg hover:bg-stone-200 transition-colors font-medium"
+                        >
+                          {thumbnailCopied ? '✓ コピー済み' : 'コピー'}
+                        </button>
+                        <button
+                          onClick={() => window.open('https://chat.openai.com', '_blank')}
+                          className="flex-1 py-2 bg-emerald-600 text-white text-sm rounded-lg hover:bg-emerald-700 transition-colors font-medium"
+                        >
+                          ChatGPTで開く
+                        </button>
+                      </div>
+                      {thumbnailCopied && (
+                        <p className="text-xs text-emerald-600 bg-emerald-50 rounded-lg px-3 py-2">
+                          💡 ChatGPTに貼り付けて「この内容で画像を生成してください」と送信してください。
+                        </p>
+                      )}
+                    </div>
+                  ) : (
+                    <p className="text-xs text-stone-400">
+                      ボタンをクリックするとDALL-E向けの日本語プロンプトを生成します。
+                    </p>
+                  )}
+                </div>
+
+                {/* 記事挿入画像（サムネイル生成後に表示） */}
+                {thumbnailPrompt && titlesResult && (
+                  <div className="mt-6 pt-5 border-t border-stone-100 space-y-4">
+                    <div className="flex items-center justify-between flex-wrap gap-2">
+                      <p className="text-sm font-medium text-stone-600">記事挿入画像（任意）</p>
+                      {sectionChecked.some(Boolean) && (
+                        <button
+                          onClick={generateSectionPrompts}
+                          disabled={sectionLoading}
+                          className="text-xs px-3 py-1.5 bg-rose-600 text-white rounded-lg hover:bg-rose-700 disabled:opacity-50 transition-colors"
+                        >
+                          {sectionLoading ? '生成中...' : '選択セクションのプロンプトを生成'}
+                        </button>
+                      )}
+                    </div>
+                    <p className="text-xs text-stone-400">
+                      画像を挿入したいセクションにチェックを入れてください。
+                    </p>
+
+                    <div className="space-y-5">
+                      {titlesResult.outline.map((item, i) => (
+                        <div key={i}>
+                          <label className="flex items-center gap-2.5 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={sectionChecked[i] ?? false}
+                              onChange={(e) => {
+                                const next = [...sectionChecked]
+                                next[i] = e.target.checked
+                                setSectionChecked(next)
+                              }}
+                              className="w-4 h-4 rounded accent-rose-600 shrink-0"
+                            />
+                            <span className="text-sm text-stone-700">{item.h2}</span>
+                          </label>
+
+                          {sectionChecked[i] && (
+                            <div className="ml-6 mt-3 space-y-3">
+                              {sectionPrompts[i] ? (
+                                <>
+                                  <p className="text-xs text-stone-700 bg-stone-50 rounded-lg p-3 whitespace-pre-wrap leading-relaxed border border-stone-200">
+                                    {sectionPrompts[i]}
+                                  </p>
+                                  <div className="flex gap-2">
+                                    <button
+                                      onClick={() => copy(sectionPrompts[i], `sec_${i}`)}
+                                      className="text-xs px-3 py-1.5 bg-stone-100 text-stone-600 rounded-lg hover:bg-stone-200 transition-colors"
+                                    >
+                                      {copied === `sec_${i}` ? '✓ コピー' : 'コピー'}
+                                    </button>
+                                    <button
+                                      onClick={() => window.open('https://chat.openai.com', '_blank')}
+                                      className="text-xs px-3 py-1.5 bg-emerald-100 text-emerald-700 rounded-lg hover:bg-emerald-200 transition-colors"
+                                    >
+                                      ChatGPTで開く
+                                    </button>
+                                  </div>
+                                </>
+                              ) : (
+                                <p className="text-xs text-stone-400">
+                                  上の「選択セクションのプロンプトを生成」を押してください。
+                                </p>
+                              )}
+
+                              <div>
+                                <label className="block text-xs text-stone-500 mb-1">
+                                  生成した画像のURL（Shopifyアップロード後に貼り付け）
+                                </label>
+                                <input
+                                  type="text"
+                                  value={sectionImageUrls[i] ?? ''}
+                                  onChange={(e) => {
+                                    const next = [...sectionImageUrls]
+                                    next[i] = e.target.value
+                                    setSectionImageUrls(next)
+                                  }}
+                                  placeholder="https://cdn.shopify.com/..."
+                                  className="w-full px-3 py-2 border border-stone-200 rounded-lg text-xs text-stone-700 focus:outline-none focus:ring-2 focus:ring-rose-200"
+                                />
+                                <p className="text-xs text-stone-400 mt-1">
+                                  ChatGPTで画像を生成 → ダウンロード → 画像ページでトリミング → Shopifyにアップロード → URLをここに貼る
+                                </p>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           )}
