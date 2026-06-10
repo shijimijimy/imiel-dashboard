@@ -163,6 +163,8 @@ function WritePageContent() {
     noteTone: DEFAULT_BRAND_TONE_NOTE,
     mustKeywords: '温活, レッグウォーマー, セルフケア, 冷え対策',
   })
+  const [articleId,   setArticleId]   = useState<string | null>(null)
+  const [articleSaved, setArticleSaved] = useState(false)
 
   useEffect(() => {
     const s = loadSettings()
@@ -259,22 +261,9 @@ function WritePageContent() {
       const parsed = parseJSON<SeoResult>(result)
       if (!parsed) throw new Error('レスポンスの解析に失敗しました')
       setSeoResult(parsed)
-      // ローカルストレージに保存
-      const article = {
-        title: selectedTitle,
-        body,
-        noteBody: formatForNote(body),
-        platform,
-        keyword,
-        slug: parsed.slug,
-        eyecatchUrl: eyecatchUrl || undefined,
-        seo: parsed,
-        createdAt: new Date().toISOString(),
-      }
-      const existing = JSON.parse(localStorage.getItem('imiel_articles') || '[]')
-      existing.unshift(article)
-      localStorage.setItem('imiel_articles', JSON.stringify(existing.slice(0, 50)))
-      localStorage.setItem('imiel_current_article', JSON.stringify(article))
+      localStorage.setItem('imiel_current_article', JSON.stringify({
+        title: selectedTitle, body, platform, keyword, slug: parsed.slug, seo: parsed,
+      }))
     } catch (e) {
       setError((e as Error).message)
     } finally {
@@ -346,6 +335,53 @@ function WritePageContent() {
     setTarget([...next].join(' '))
   }
 
+  function saveArticle() {
+    if (!seoResult) return
+    const seoAvg = Math.round(
+      (seoResult.seoScore.titleScore + seoResult.seoScore.keywordScore + seoResult.seoScore.readabilityScore) / 3
+    )
+    const existing: Record<string, unknown>[] = JSON.parse(localStorage.getItem('imiel_articles') || '[]')
+    if (articleId) {
+      const idx = existing.findIndex((a) => (a as { id?: string }).id === articleId)
+      if (idx !== -1) {
+        existing[idx] = {
+          ...existing[idx],
+          title: selectedTitle,
+          body,
+          metaDescription: seoResult.metaDescription,
+          slug: seoResult.slug,
+          seoScore: seoAvg,
+          thumbnailUrl: eyecatchUrl || null,
+        }
+        localStorage.setItem('imiel_articles', JSON.stringify(existing))
+        setArticleSaved(true)
+        setTimeout(() => setArticleSaved(false), 3000)
+        return
+      }
+    }
+    const id = crypto.randomUUID()
+    setArticleId(id)
+    existing.unshift({
+      id,
+      title: selectedTitle,
+      body,
+      metaDescription: seoResult.metaDescription,
+      slug: seoResult.slug,
+      keyword,
+      platform,
+      seoScore: seoAvg,
+      status: 'draft',
+      createdAt: new Date().toISOString(),
+      publishedAt: null,
+      thumbnailUrl: eyecatchUrl || null,
+      noteBody: formatForNote(body),
+      seo: seoResult,
+    })
+    localStorage.setItem('imiel_articles', JSON.stringify(existing.slice(0, 50)))
+    setArticleSaved(true)
+    setTimeout(() => setArticleSaved(false), 3000)
+  }
+
   function reset() {
     setStep(1)
     setTitlesResult(null)
@@ -363,6 +399,8 @@ function WritePageContent() {
     setOpenKeywordCat('場所')
     setOpenTargetCat('年代')
     setMemos([''])
+    setArticleId(null)
+    setArticleSaved(false)
   }
 
   const memosText = memos.filter(m => m.trim()).join('\n')
@@ -940,10 +978,22 @@ function WritePageContent() {
                 )}
               </div>
 
-              <div className="px-4 py-3 bg-stone-50 rounded-lg">
-                <p className="text-xs text-stone-400">
-                  ✓ 記事データを保存しました。「投稿・通知」ページからShopifyに投稿できます。
-                </p>
+              <div className="flex items-center justify-between px-4 py-3 bg-stone-50 rounded-lg border border-stone-200">
+                {articleSaved ? (
+                  <p className="text-xs text-emerald-600 font-medium">
+                    ✓ 記事を保存しました。「記事一覧」から確認・編集できます。
+                  </p>
+                ) : (
+                  <p className="text-xs text-stone-400">
+                    {articleId ? '記事を更新して保存します' : '記事データをブラウザに保存します'}
+                  </p>
+                )}
+                <button
+                  onClick={saveArticle}
+                  className="ml-4 shrink-0 px-4 py-2 bg-rose-600 text-white text-xs rounded-lg hover:bg-rose-700 font-medium transition-colors"
+                >
+                  {articleId ? '記事を更新' : '記事を保存'}
+                </button>
               </div>
 
               {/* 画像プロンプト */}
