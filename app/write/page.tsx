@@ -68,6 +68,46 @@ function ScoreBar({ label, score }: { label: string; score: number }) {
   )
 }
 
+const KEYWORD_CHIP_GROUPS = [
+  {
+    category: '場所×冷え',
+    chips: ['映画館 冷え 対策', 'オフィス 足元 冷え', '新幹線 冷え 対策', 'カフェ 冷房 寒い', '飛行機 足元 冷え', 'スーパー 冷え 夏'],
+  },
+  {
+    category: '年代×悩み',
+    chips: ['40代 冷え ひどい', '更年期 冷え 対策', '30代 冷え性 改善', '産後 冷え むくみ', '生理痛 温活 効果'],
+  },
+  {
+    category: '季節×温活',
+    chips: ['夏 冷房 冷え 対策', '梅雨 足元 冷え', '秋 温活 始め方', '冬 足元 冷え 寝れない'],
+  },
+  {
+    category: '商品関連',
+    chips: ['シルク レッグウォーマー 効果', '温活 グッズ 持ち歩き', 'レッグウォーマー 使い方', '温活 セルフケア 簡単'],
+  },
+]
+
+const NOTE_KEYWORD_EXTRA = [
+  {
+    category: 'note向け',
+    chips: ['温活とは 効果 体験談', '冷え性 原因 改善方法', 'セルフケア 習慣 40代', 'レッグウォーマー 選び方'],
+  },
+]
+
+const TARGET_CHIPS = [
+  '40代 冷え性の女性',
+  '更年期が気になる女性',
+  'デスクワークで足元が冷える女性',
+  '産後の冷えに悩むママ',
+  '生理痛がつらい女性',
+  '温活を始めたい30〜40代',
+  '冬の冷え対策を探している女性',
+  '夏の冷房対策をしたい女性',
+]
+
+const STYLES = ['体験談・等身大', '解説・情報系', '比較・まとめ系'] as const
+type ArticleStyle = typeof STYLES[number]
+
 function parseJSON<T>(text: string): T | null {
   try {
     const match = text.match(/\[[\s\S]*\]|\{[\s\S]*\}/)
@@ -93,6 +133,8 @@ function WritePageContent() {
   const [body, setBody] = useState('')
   const [seoResult, setSeoResult] = useState<SeoResult | null>(null)
   const [copied, setCopied] = useState<string | null>(null)
+  const [style, setStyle] = useState<ArticleStyle>('体験談・等身大')
+  const [eyecatchUrl, setEyecatchUrl] = useState('')
   const [settings, setSettings] = useState({
     shopifyTone: DEFAULT_BRAND_TONE_SHOPIFY,
     noteTone: DEFAULT_BRAND_TONE_NOTE,
@@ -102,6 +144,11 @@ function WritePageContent() {
   useEffect(() => {
     const s = loadSettings()
     setSettings({ shopifyTone: s.shopifyTone, noteTone: s.noteTone, mustKeywords: s.mustKeywords })
+    const savedUrl = localStorage.getItem('imiel_eyecatch_url')
+    if (savedUrl) {
+      setEyecatchUrl(savedUrl)
+      localStorage.removeItem('imiel_eyecatch_url')
+    }
   }, [])
 
   const brandTone = platform === 'shopify' ? settings.shopifyTone : settings.noteTone
@@ -129,6 +176,7 @@ function WritePageContent() {
         target,
         brandTone,
         mustKeywords: settings.mustKeywords,
+        style,
       })
       const parsed = parseJSON<TitlesResult>(result)
       if (!parsed) throw new Error('レスポンスの解析に失敗しました')
@@ -185,6 +233,7 @@ function WritePageContent() {
         platform,
         keyword,
         slug: parsed.slug,
+        eyecatchUrl: eyecatchUrl || undefined,
         seo: parsed,
         createdAt: new Date().toISOString(),
       }
@@ -278,10 +327,12 @@ function WritePageContent() {
       {/* Step 1: 入力 */}
       {step === 1 && (
         <div className="bg-white rounded-xl p-6 shadow-sm border border-stone-100">
-          <h2 className="text-base font-semibold text-stone-700 mb-4">キーワード・スタイルを入力</h2>
-          <div className="space-y-4">
+          <h2 className="text-base font-semibold text-stone-700 mb-5">キーワード・スタイルを入力</h2>
+          <div className="space-y-5">
+
+            {/* メインキーワード */}
             <div>
-              <label className="block text-sm font-medium text-stone-600 mb-1">
+              <label className="block text-sm font-medium text-stone-600 mb-1.5">
                 メインキーワード <span className="text-rose-500">*</span>
               </label>
               <input
@@ -292,9 +343,37 @@ function WritePageContent() {
                 placeholder="例：冷え性 レッグウォーマー 効果"
                 className="w-full px-4 py-2.5 border border-stone-200 rounded-lg text-stone-800 text-sm focus:outline-none focus:ring-2 focus:ring-rose-200"
               />
+              <div className="mt-3 space-y-3">
+                {[
+                  ...KEYWORD_CHIP_GROUPS,
+                  ...(platform === 'note' ? NOTE_KEYWORD_EXTRA : []),
+                ].map(({ category, chips }) => (
+                  <div key={category}>
+                    <p className="text-xs text-stone-400 mb-1.5">{category}</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {chips.map((chip) => (
+                        <button
+                          key={chip}
+                          type="button"
+                          onClick={() => setKeyword(chip)}
+                          className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${
+                            keyword === chip
+                              ? 'bg-rose-600 border-rose-600 text-white'
+                              : 'bg-white border-stone-200 text-stone-600 hover:border-rose-300 hover:text-rose-700'
+                          }`}
+                        >
+                          {chip}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
+
+            {/* ターゲット読者 */}
             <div>
-              <label className="block text-sm font-medium text-stone-600 mb-1">
+              <label className="block text-sm font-medium text-stone-600 mb-1.5">
                 ターゲット読者（任意）
               </label>
               <input
@@ -304,13 +383,90 @@ function WritePageContent() {
                 placeholder="例：40代、冷え性で悩む会社員女性"
                 className="w-full px-4 py-2.5 border border-stone-200 rounded-lg text-stone-800 text-sm focus:outline-none focus:ring-2 focus:ring-rose-200"
               />
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {TARGET_CHIPS.map((chip) => (
+                  <button
+                    key={chip}
+                    type="button"
+                    onClick={() => setTarget(chip)}
+                    className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${
+                      target === chip
+                        ? 'bg-rose-600 border-rose-600 text-white'
+                        : 'bg-white border-stone-200 text-stone-600 hover:border-rose-300 hover:text-rose-700'
+                    }`}
+                  >
+                    {chip}
+                  </button>
+                ))}
+              </div>
             </div>
-            <div className="bg-stone-50 rounded-lg p-4">
-              <p className="text-xs font-medium text-stone-500 mb-1">
+
+            {/* 記事スタイル */}
+            <div>
+              <label className="block text-sm font-medium text-stone-600 mb-2">記事スタイル</label>
+              <div className="flex gap-2 flex-wrap">
+                {STYLES.map((s) => (
+                  <button
+                    key={s}
+                    type="button"
+                    onClick={() => setStyle(s)}
+                    className={`px-4 py-2 rounded-lg border text-sm font-medium transition-colors ${
+                      style === s
+                        ? 'bg-rose-600 border-rose-600 text-white'
+                        : 'bg-white border-stone-200 text-stone-600 hover:border-rose-300 hover:text-rose-700'
+                    }`}
+                  >
+                    {s}
+                  </button>
+                ))}
+              </div>
+              <p className="text-xs text-stone-400 mt-1.5">
+                {style === '解説・情報系'
+                  ? '正確な情報・わかりやすい説明を重視した構成になります'
+                  : style === '比較・まとめ系'
+                  ? '比較や箇条書きを活用した整理しやすい構成になります'
+                  : 'ゆみの体験談ベースで等身大の語り口になります'}
+              </p>
+            </div>
+
+            {/* アイキャッチ画像URL */}
+            <div>
+              <label className="block text-sm font-medium text-stone-600 mb-1.5">
+                アイキャッチ画像URL（任意）
+              </label>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={eyecatchUrl}
+                  onChange={(e) => setEyecatchUrl(e.target.value)}
+                  placeholder="Shopifyアップロード後にここにセットされます"
+                  className="flex-1 px-4 py-2.5 border border-stone-200 rounded-lg text-stone-800 text-sm focus:outline-none focus:ring-2 focus:ring-rose-200"
+                />
+                {eyecatchUrl && (
+                  <button
+                    type="button"
+                    onClick={() => setEyecatchUrl('')}
+                    className="px-3 py-2.5 text-stone-400 hover:text-stone-600 border border-stone-200 rounded-lg text-sm"
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
+              {eyecatchUrl && (
+                <p className="text-xs text-emerald-600 mt-1">
+                  ✓ 画像ページからURLがセットされました
+                </p>
+              )}
+            </div>
+
+            {/* ブランドトーン（折りたたみ参照） */}
+            <div className="bg-stone-50 rounded-lg p-3">
+              <p className="text-xs font-medium text-stone-400 mb-1">
                 ブランドトーン（{platform === 'shopify' ? 'Shopify' : 'note'}）
               </p>
-              <p className="text-xs text-stone-600 leading-relaxed">{brandTone}</p>
+              <p className="text-xs text-stone-500 leading-relaxed">{brandTone}</p>
             </div>
+
             <button
               onClick={generateTitles}
               disabled={!keyword.trim() || loading}

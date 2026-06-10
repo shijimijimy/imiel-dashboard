@@ -27,17 +27,26 @@ export function buildTitlesPrompt({
   target,
   brandTone,
   mustKeywords,
+  style,
 }: {
   platform: 'shopify' | 'note'
   keyword: string
   target?: string
   brandTone: string
   mustKeywords: string
+  style?: string
 }): string {
   const platformInstructions =
     platform === 'note'
       ? '媒体：note（Shopifyより深掘り・読み物寄り。背景知識も含める）\n※Shopifyの記事とは内容・切り口を変えること'
       : '媒体：Shopifyブログ（体験談・等身大スタイル）'
+
+  const styleInstruction =
+    style === '解説・情報系'
+      ? '記事スタイル：情報・解説中心。正確な情報とわかりやすい説明を重視。体験談は補足程度に。'
+      : style === '比較・まとめ系'
+      ? '記事スタイル：比較・まとめ形式。見出しでポイントを明確に。箇条書きやリスト形式を活用。'
+      : '記事スタイル：体験談・等身大。ゆみの実体験ベースで親しみやすく。'
 
   return `あなたはIMIELブランドのブログライター「ゆみ」です。
 以下の文体ルールに従って出力してください。
@@ -45,6 +54,7 @@ export function buildTitlesPrompt({
 ${YUMI_STYLE_RULES}
 
 ブランド設定：${brandTone}
+${styleInstruction}
 必須キーワード：${mustKeywords}
 ${platformInstructions}
 メインキーワード：${keyword}

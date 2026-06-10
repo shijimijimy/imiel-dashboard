@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useRef } from 'react'
+import { useRouter } from 'next/navigation'
 import ReactCrop, {
   type Crop,
   type PixelCrop,
@@ -10,10 +11,10 @@ import ReactCrop, {
 import 'react-image-crop/dist/ReactCrop.css'
 
 const PRESETS = [
-  { label: 'Shopifyサムネイル', width: 1200, height: 630 },
-  { label: 'note見出し', width: 1280, height: 670 },
-  { label: 'SNS正方形', width: 1080, height: 1080 },
-  { label: 'SNS縦長', width: 1080, height: 1350 },
+  { label: 'Shopifyサムネイル', slug: 'shopify-thumbnail', width: 1200, height: 630 },
+  { label: 'note見出し',        slug: 'note-header',       width: 1280, height: 670 },
+  { label: 'SNS正方形',         slug: 'sns-square',        width: 1080, height: 1080 },
+  { label: 'SNS縦長',           slug: 'sns-portrait',      width: 1080, height: 1350 },
 ]
 
 function centerAspectCrop(
@@ -28,10 +29,7 @@ function centerAspectCrop(
   )
 }
 
-async function cropToBlob(
-  image: HTMLImageElement,
-  crop: PixelCrop
-): Promise<Blob> {
+async function cropToBlob(image: HTMLImageElement, crop: PixelCrop): Promise<Blob> {
   const canvas = document.createElement('canvas')
   const scaleX = image.naturalWidth / image.width
   const scaleY = image.naturalHeight / image.height
@@ -51,14 +49,17 @@ async function cropToBlob(
   )
   return new Promise((resolve, reject) => {
     canvas.toBlob(
-      (blob) => {
-        if (blob) resolve(blob)
-        else reject(new Error('Canvas is empty'))
-      },
+      (blob) => (blob ? resolve(blob) : reject(new Error('Canvas is empty'))),
       'image/jpeg',
       0.85
     )
   })
+}
+
+function buildFileName(presetSlug: string | null): string {
+  const slug = presetSlug ?? 'custom'
+  const date = new Date().toISOString().slice(0, 10).replace(/-/g, '')
+  return `imiel-${slug}-${date}.jpg`
 }
 
 function parseJSON<T>(text: string): T | null {
@@ -71,7 +72,16 @@ function parseJSON<T>(text: string): T | null {
   }
 }
 
+interface TrimUploadResult {
+  success: boolean
+  message: string
+  url?: string
+  previewObjectUrl?: string
+  notConfigured?: boolean
+}
+
 export default function ImagePage() {
+  const router = useRouter()
   const [tab, setTab] = useState<'trim' | 'prompt' | 'upload'>('trim')
 
   // トリミング
@@ -80,6 +90,10 @@ export default function ImagePage() {
   const [completedCrop, setCompletedCrop] = useState<PixelCrop>()
   const imgRef = useRef<HTMLImageElement>(null)
   const [fileName, setFileName] = useState('image')
+  const [selectedPreset, setSelectedPreset] = useState<typeof PRESETS[number] | null>(null)
+  const [trimUploading, setTrimUploading] = useState(false)
+  const [trimUploadResult, setTrimUploadResult] = useState<TrimUploadResult | null>(null)
+  const [trimCopied, setTrimCopied] = useState(false)
 
   // プロンプト生成
   const [title, setTitle] = useState('')
@@ -94,20 +108,19 @@ export default function ImagePage() {
   const [copied, setCopied] = useState<string | null>(null)
   const [error, setError] = useState('')
 
-  // Shopifyアップロード
+  // 別タブ用アップロード（ファイル選択式）
   const [uploadFile, setUploadFile] = useState<File | null>(null)
   const [uploadAlt, setUploadAlt] = useState('')
   const [uploading, setUploading] = useState(false)
-  const [uploadResult, setUploadResult] = useState<{
-    success: boolean
-    message: string
-    url?: string
-  } | null>(null)
+  const [uploadResult, setUploadResult] = useState<TrimUploadResult | null>(null)
+  const [uploadCopied, setUploadCopied] = useState(false)
 
   function onSelectFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (!file) return
     setFileName(file.name.replace(/\.[^.]+$/, ''))
+    setSelectedPreset(null)
+    setTrimUploadResult(null)
     const reader = new FileReader()
     reader.onload = () => setImgSrc(reader.result as string)
     reader.readAsDataURL(file)
@@ -118,10 +131,12 @@ export default function ImagePage() {
     setCrop(centerAspectCrop(width, height, 16 / 9))
   }
 
-  function applyPreset(preset: { width: number; height: number }) {
+  function applyPreset(preset: typeof PRESETS[number]) {
     if (!imgRef.current) return
     const { width, height } = imgRef.current
     setCrop(centerAspectCrop(width, height, preset.width / preset.height))
+    setSelectedPreset(preset)
+    setTrimUploadResult(null)
   }
 
   async function downloadCrop() {
@@ -131,12 +146,63 @@ export default function ImagePage() {
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
-      a.download = `${fileName}_crop.jpg`
+      a.download = buildFileName(selectedPreset?.slug ?? null)
       a.click()
       URL.revokeObjectURL(url)
     } catch (e) {
       console.error(e)
     }
+  }
+
+  async function uploadTrimToShopify() {
+    if (!completedCrop || !imgRef.current) return
+    setTrimUploading(true)
+    setTrimUploadResult(null)
+    let previewObjectUrl: string | undefined
+    try {
+      const blob = await cropToBlob(imgRef.current, completedCrop)
+      previewObjectUrl = URL.createObjectURL(blob)
+      const generatedName = buildFileName(selectedPreset?.slug ?? null)
+      const file = new File([blob], generatedName, { type: 'image/jpeg' })
+      const form = new FormData()
+      form.append('file', file)
+      form.append('altText', 'IMIELブログ画像')
+      const res = await fetch('/api/shopify-image', { method: 'POST', body: form })
+      const data = await res.json()
+      if (data.error === 'SHOPIFY_NOT_CONFIGURED') {
+        setTrimUploadResult({
+          success: false,
+          message: data.message,
+          notConfigured: true,
+        })
+        URL.revokeObjectURL(previewObjectUrl)
+        return
+      }
+      if (!res.ok) throw new Error(data.error || 'アップロードエラー')
+      setTrimUploadResult({
+        success: true,
+        message: 'Shopifyにアップロードしました！',
+        url: data.url,
+        previewObjectUrl,
+      })
+    } catch (e) {
+      if (previewObjectUrl) URL.revokeObjectURL(previewObjectUrl)
+      setTrimUploadResult({ success: false, message: (e as Error).message })
+    } finally {
+      setTrimUploading(false)
+    }
+  }
+
+  function copyTrimUrl() {
+    if (!trimUploadResult?.url) return
+    navigator.clipboard.writeText(trimUploadResult.url)
+    setTrimCopied(true)
+    setTimeout(() => setTrimCopied(false), 2000)
+  }
+
+  function useInArticle(url: string) {
+    localStorage.setItem('imiel_eyecatch_url', url)
+    router.push('/write')
   }
 
   async function generatePrompt() {
@@ -172,7 +238,7 @@ export default function ImagePage() {
     setTimeout(() => setCopied(null), 2000)
   }
 
-  async function uploadToShopify() {
+  async function uploadFileToShopify() {
     if (!uploadFile) return
     setUploading(true)
     setUploadResult(null)
@@ -182,11 +248,15 @@ export default function ImagePage() {
       form.append('altText', uploadAlt)
       const res = await fetch('/api/shopify-image', { method: 'POST', body: form })
       const data = await res.json()
+      if (data.error === 'SHOPIFY_NOT_CONFIGURED') {
+        setUploadResult({ success: false, message: data.message, notConfigured: true })
+        return
+      }
       if (!res.ok) throw new Error(data.error || 'アップロードエラー')
       setUploadResult({
         success: true,
         message: 'Shopifyにアップロードしました！',
-        url: data.file?.url,
+        url: data.url,
       })
     } catch (e) {
       setUploadResult({ success: false, message: (e as Error).message })
@@ -199,7 +269,7 @@ export default function ImagePage() {
     <div className="p-8 max-w-4xl">
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-stone-800">画像編集</h1>
-        <p className="text-stone-500 text-sm mt-1">トリミング・画像プロンプト生成</p>
+        <p className="text-stone-500 text-sm mt-1">トリミング・プロンプト生成・Shopifyアップロード</p>
       </div>
 
       {/* タブ */}
@@ -223,7 +293,7 @@ export default function ImagePage() {
         ))}
       </div>
 
-      {/* トリミングタブ */}
+      {/* ── トリミングタブ ── */}
       {tab === 'trim' && (
         <div className="space-y-5">
           <div className="bg-white rounded-xl p-6 shadow-sm border border-stone-100">
@@ -249,16 +319,18 @@ export default function ImagePage() {
                     <button
                       key={p.label}
                       onClick={() => applyPreset(p)}
-                      className="text-xs px-3 py-1.5 bg-stone-100 hover:bg-rose-50 hover:text-rose-700 text-stone-600 rounded-lg transition-colors"
+                      className={`text-xs px-3 py-1.5 rounded-lg transition-colors ${
+                        selectedPreset?.slug === p.slug
+                          ? 'bg-rose-100 text-rose-700 ring-1 ring-rose-400'
+                          : 'bg-stone-100 hover:bg-rose-50 hover:text-rose-700 text-stone-600'
+                      }`}
                     >
                       {p.label}
-                      <span className="text-stone-400 ml-1">
-                        {p.width}×{p.height}
-                      </span>
+                      <span className="text-stone-400 ml-1">{p.width}×{p.height}</span>
                     </button>
                   ))}
                   <button
-                    onClick={() => setCrop(undefined)}
+                    onClick={() => { setCrop(undefined); setSelectedPreset(null) }}
                     className="text-xs px-3 py-1.5 bg-stone-100 hover:bg-stone-200 text-stone-600 rounded-lg transition-colors"
                   >
                     自由選択
@@ -285,22 +357,111 @@ export default function ImagePage() {
                 {completedCrop && (
                   <p className="text-xs text-stone-400 mt-2 text-center">
                     選択範囲: {Math.round(completedCrop.width)} × {Math.round(completedCrop.height)} px（表示上）
+                    {selectedPreset && (
+                      <span className="ml-2 text-stone-400">
+                        · ファイル名: {buildFileName(selectedPreset.slug)}
+                      </span>
+                    )}
                   </p>
                 )}
               </div>
-              <button
-                onClick={downloadCrop}
-                disabled={!completedCrop}
-                className="w-full py-3 bg-rose-600 text-white rounded-lg font-medium text-sm hover:bg-rose-700 disabled:opacity-50 transition-colors"
-              >
-                JPEG（85%品質）でダウンロード
-              </button>
+
+              {/* アクションボタン */}
+              <div className="flex gap-3">
+                <button
+                  onClick={downloadCrop}
+                  disabled={!completedCrop}
+                  className="flex-1 py-3 bg-stone-100 text-stone-700 rounded-lg font-medium text-sm hover:bg-stone-200 disabled:opacity-50 transition-colors"
+                >
+                  ダウンロード
+                </button>
+                <button
+                  onClick={uploadTrimToShopify}
+                  disabled={!completedCrop || trimUploading}
+                  className="flex-1 py-3 bg-rose-600 text-white rounded-lg font-medium text-sm hover:bg-rose-700 disabled:opacity-50 transition-colors"
+                >
+                  {trimUploading ? 'アップロード中...' : 'Shopifyにアップロード'}
+                </button>
+              </div>
+
+              {/* アップロード結果 */}
+              {trimUploadResult && (
+                <div
+                  className={`rounded-xl p-5 border ${
+                    trimUploadResult.success
+                      ? 'bg-emerald-50 border-emerald-200'
+                      : trimUploadResult.notConfigured
+                      ? 'bg-amber-50 border-amber-200'
+                      : 'bg-red-50 border-red-200'
+                  }`}
+                >
+                  {trimUploadResult.success ? (
+                    <div className="space-y-3">
+                      <p className="text-sm font-medium text-emerald-700">
+                        ✓ {trimUploadResult.message}
+                      </p>
+                      {trimUploadResult.previewObjectUrl && (
+                        <div className="flex items-start gap-4">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={trimUploadResult.previewObjectUrl}
+                            alt="アップロードした画像"
+                            className="w-24 h-16 object-cover rounded-lg border border-emerald-200 shrink-0"
+                          />
+                          <div className="flex-1 min-w-0 space-y-2">
+                            {trimUploadResult.url ? (
+                              <>
+                                <div className="flex items-center gap-2">
+                                  <p className="text-xs text-emerald-700 font-mono truncate flex-1 bg-white rounded px-2 py-1 border border-emerald-200">
+                                    {trimUploadResult.url}
+                                  </p>
+                                  <button
+                                    onClick={copyTrimUrl}
+                                    className="shrink-0 text-xs px-3 py-1.5 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors"
+                                  >
+                                    {trimCopied ? '✓ コピー' : 'コピー'}
+                                  </button>
+                                </div>
+                                <button
+                                  onClick={() => useInArticle(trimUploadResult.url!)}
+                                  className="w-full py-2 bg-rose-600 text-white text-sm rounded-lg hover:bg-rose-700 transition-colors font-medium"
+                                >
+                                  ブログ記事で使う →
+                                </button>
+                              </>
+                            ) : (
+                              <p className="text-xs text-emerald-600">
+                                URLはShopify管理画面で確認できます（処理中の可能性があります）
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div>
+                      <p className={`text-sm font-medium ${trimUploadResult.notConfigured ? 'text-amber-700' : 'text-red-700'}`}>
+                        {trimUploadResult.notConfigured ? '⚠ ' : '✕ '}
+                        {trimUploadResult.message}
+                      </p>
+                      {trimUploadResult.notConfigured && (
+                        <a
+                          href="/settings"
+                          className="text-xs text-amber-600 underline mt-1 inline-block"
+                        >
+                          設定ページへ →
+                        </a>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
             </>
           )}
         </div>
       )}
 
-      {/* プロンプト生成タブ */}
+      {/* ── プロンプト生成タブ ── */}
       {tab === 'prompt' && (
         <div className="space-y-5">
           <div className="bg-white rounded-xl p-6 shadow-sm border border-stone-100">
@@ -349,71 +510,56 @@ export default function ImagePage() {
 
           {promptResult && (
             <div className="space-y-4">
-              {/* Midjourney */}
-              <div className="bg-white rounded-xl p-6 shadow-sm border border-stone-100">
-                <div className="flex items-center gap-2 mb-4">
-                  <span className="text-xs font-bold px-2 py-0.5 bg-violet-100 text-violet-700 rounded-full">
-                    Midjourney
-                  </span>
-                </div>
-                <div className="space-y-4">
-                  {[
+              {[
+                {
+                  badge: 'Midjourney',
+                  badgeClass: 'bg-violet-100 text-violet-700',
+                  items: [
                     { label: 'サムネイル（16:9）', text: promptResult.midjourney_thumbnail, key: 'mj_thumb' },
                     { label: 'アイキャッチ（4:3）', text: promptResult.midjourney_eyecatch, key: 'mj_eye' },
-                  ].map(({ label, text, key }) => (
-                    <div key={key}>
-                      <div className="flex justify-between items-center mb-1">
-                        <p className="text-xs font-medium text-stone-500">{label}</p>
-                        <button
-                          onClick={() => copy(text, key)}
-                          className="text-xs text-stone-400 hover:text-stone-600"
-                        >
-                          {copied === key ? '✓ コピー済み' : 'コピー'}
-                        </button>
-                      </div>
-                      <p className="text-xs text-stone-700 bg-stone-50 rounded-lg p-3 font-mono leading-relaxed break-all">
-                        {text}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* DALL-E */}
-              <div className="bg-white rounded-xl p-6 shadow-sm border border-stone-100">
-                <div className="flex items-center gap-2 mb-4">
-                  <span className="text-xs font-bold px-2 py-0.5 bg-emerald-100 text-emerald-700 rounded-full">
-                    DALL-E / ChatGPT
-                  </span>
-                </div>
-                <div className="space-y-4">
-                  {[
+                  ],
+                },
+                {
+                  badge: 'DALL-E / ChatGPT',
+                  badgeClass: 'bg-emerald-100 text-emerald-700',
+                  items: [
                     { label: 'サムネイル（16:9）', text: promptResult.dalle_thumbnail, key: 'de_thumb' },
                     { label: 'アイキャッチ（4:3）', text: promptResult.dalle_eyecatch, key: 'de_eye' },
-                  ].map(({ label, text, key }) => (
-                    <div key={key}>
-                      <div className="flex justify-between items-center mb-1">
-                        <p className="text-xs font-medium text-stone-500">{label}</p>
-                        <button
-                          onClick={() => copy(text, key)}
-                          className="text-xs text-stone-400 hover:text-stone-600"
-                        >
-                          {copied === key ? '✓ コピー済み' : 'コピー'}
-                        </button>
+                  ],
+                },
+              ].map(({ badge, badgeClass, items }) => (
+                <div key={badge} className="bg-white rounded-xl p-6 shadow-sm border border-stone-100">
+                  <div className="mb-4">
+                    <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${badgeClass}`}>
+                      {badge}
+                    </span>
+                  </div>
+                  <div className="space-y-4">
+                    {items.map(({ label, text, key }) => (
+                      <div key={key}>
+                        <div className="flex justify-between items-center mb-1">
+                          <p className="text-xs font-medium text-stone-500">{label}</p>
+                          <button
+                            onClick={() => copy(text, key)}
+                            className="text-xs text-stone-400 hover:text-stone-600"
+                          >
+                            {copied === key ? '✓ コピー済み' : 'コピー'}
+                          </button>
+                        </div>
+                        <p className="text-xs text-stone-700 bg-stone-50 rounded-lg p-3 font-mono leading-relaxed break-all">
+                          {text}
+                        </p>
                       </div>
-                      <p className="text-xs text-stone-700 bg-stone-50 rounded-lg p-3 font-mono leading-relaxed break-all">
-                        {text}
-                      </p>
-                    </div>
-                  ))}
+                    ))}
+                  </div>
                 </div>
-              </div>
+              ))}
             </div>
           )}
         </div>
       )}
 
-      {/* Shopifyアップロードタブ */}
+      {/* ── Shopifyアップロードタブ（ファイル選択式） ── */}
       {tab === 'upload' && (
         <div className="space-y-5">
           <div className="bg-white rounded-xl p-6 shadow-sm border border-stone-100">
@@ -429,9 +575,9 @@ export default function ImagePage() {
                   type="file"
                   accept="image/jpeg,image/png,image/webp"
                   onChange={(e) => {
-                    const f = e.target.files?.[0] || null
-                    setUploadFile(f)
+                    setUploadFile(e.target.files?.[0] || null)
                     setUploadResult(null)
+                    setUploadCopied(false)
                   }}
                   className="block w-full text-sm text-stone-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-rose-50 file:text-rose-700 hover:file:bg-rose-100 cursor-pointer"
                 />
@@ -448,33 +594,72 @@ export default function ImagePage() {
                   className="w-full px-4 py-2.5 border border-stone-200 rounded-lg text-sm text-stone-800 focus:outline-none focus:ring-2 focus:ring-rose-200"
                 />
               </div>
+
               {uploadResult && (
                 <div
-                  className={`px-4 py-3 rounded-lg text-sm ${
+                  className={`rounded-xl p-4 border ${
                     uploadResult.success
-                      ? 'bg-emerald-50 border border-emerald-200 text-emerald-700'
-                      : 'bg-red-50 border border-red-200 text-red-700'
+                      ? 'bg-emerald-50 border-emerald-200'
+                      : uploadResult.notConfigured
+                      ? 'bg-amber-50 border-amber-200'
+                      : 'bg-red-50 border-red-200'
                   }`}
                 >
-                  <p>{uploadResult.message}</p>
-                  {uploadResult.url && (
-                    <p className="text-xs mt-1 font-mono break-all text-emerald-600">
-                      {uploadResult.url}
-                    </p>
+                  {uploadResult.success ? (
+                    <div className="space-y-2">
+                      <p className="text-sm font-medium text-emerald-700">✓ {uploadResult.message}</p>
+                      {uploadResult.url && (
+                        <div className="space-y-2">
+                          <div className="flex items-center gap-2">
+                            <p className="text-xs text-emerald-700 font-mono truncate flex-1 bg-white rounded px-2 py-1 border border-emerald-200">
+                              {uploadResult.url}
+                            </p>
+                            <button
+                              onClick={() => {
+                                navigator.clipboard.writeText(uploadResult.url!)
+                                setUploadCopied(true)
+                                setTimeout(() => setUploadCopied(false), 2000)
+                              }}
+                              className="shrink-0 text-xs px-3 py-1.5 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors"
+                            >
+                              {uploadCopied ? '✓' : 'コピー'}
+                            </button>
+                          </div>
+                          <button
+                            onClick={() => useInArticle(uploadResult.url!)}
+                            className="w-full py-2 bg-rose-600 text-white text-sm rounded-lg hover:bg-rose-700 transition-colors font-medium"
+                          >
+                            ブログ記事で使う →
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div>
+                      <p className={`text-sm font-medium ${uploadResult.notConfigured ? 'text-amber-700' : 'text-red-700'}`}>
+                        {uploadResult.notConfigured ? '⚠ ' : '✕ '}{uploadResult.message}
+                      </p>
+                      {uploadResult.notConfigured && (
+                        <a href="/settings" className="text-xs text-amber-600 underline mt-1 inline-block">
+                          設定ページへ →
+                        </a>
+                      )}
+                    </div>
                   )}
                 </div>
               )}
+
               <button
-                onClick={uploadToShopify}
+                onClick={uploadFileToShopify}
                 disabled={!uploadFile || uploading}
-                className="w-full py-3 bg-blue-600 text-white rounded-lg font-medium text-sm hover:bg-blue-700 disabled:opacity-50 transition-colors"
+                className="w-full py-3 bg-rose-600 text-white rounded-lg font-medium text-sm hover:bg-rose-700 disabled:opacity-50 transition-colors"
               >
                 {uploading ? 'アップロード中...' : 'Shopifyにアップロード'}
               </button>
             </div>
           </div>
           <p className="text-xs text-stone-400 px-1">
-            Shopify管理画面の「コンテンツ → ファイル」に保存されます。SHOPIFY_ADMIN_API_TOKEN が必要です。
+            Shopify管理画面の「コンテンツ → ファイル」に保存されます。
           </p>
         </div>
       )}
