@@ -214,6 +214,56 @@ export function buildSectionImagePrompt({
 出力はDALL-Eにそのまま貼れる日本語プロンプトのみ。余計な説明は不要。`
 }
 
+export function buildChatGPTImageRequest({
+  title,
+  usage,
+}: {
+  title: string
+  usage: 'thumbnail' | 'eyecatch' | 'sns'
+}): string {
+  const sizeSpec = {
+    thumbnail: '横長 16:9',
+    eyecatch: '正方形 1:1',
+    sns: '正方形 1:1、Instagramに映える構図',
+  }[usage]
+
+  const usageLabel = {
+    thumbnail: 'サムネイル',
+    eyecatch: '記事内アイキャッチ',
+    sns: 'SNS投稿用',
+  }[usage]
+
+  return `以下の記事のブログ画像をChatGPT（DALL-E）で生成するための、そのまま使えるプロンプトを日本語で作成してください。
+
+記事タイトル：${title}
+画像用途：${usageLabel}
+
+以下の条件を全て含めること：
+
+■ 被写体
+30〜40代の日本人女性。
+自然体でリラックスした雰囲気。
+モデルっぽくなく等身大の普通の女性。
+穏やかで少し微笑んでいる表情。
+
+■ シーン・背景
+温かみのある室内（自宅のリビング・カフェ・窓際など）。
+柔らかい自然光が入る明るい空間。
+シルクや温かい素材感を感じる小物（レッグウォーマー・マグカップ・ブランケットなど）が自然に写り込む。
+
+■ スタイル
+ライフスタイル写真風。
+色調は暖かみのあるナチュラルトーン。
+過度な加工なし。リアルな質感。
+文字・テキストは一切入れない。
+
+■ サイズ・比率
+${sizeSpec}
+
+記事タイトルの内容に合わせてシーンや小物を具体的にアレンジすること。
+出力はChatGPTにそのまま貼れる日本語プロンプトのみ。余計な説明は不要。`
+}
+
 export function buildImagePrompt(title: string, keyword: string): string {
   return `記事「${title}」（キーワード：${keyword}）のサムネイル画像プロンプトを英語で生成してください。
 
